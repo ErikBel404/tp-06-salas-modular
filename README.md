@@ -1,194 +1,239 @@
-# Trabajo práctico 05
+# Trabajo Práctico 06 - Refactorización modular de reservas
 
-## Descripción
-Aplicación web desarrollada en Node.js y Express para la consulta de disponibilidad y reserva temporal de salas de estudio. El objetivo del proyecto radica en la implementación, diseño y justificación de un pipeline de middleware en Express, cubriendo funciones incorporadas, de terceros y personalizadas, organizadas según su alcance y dependencias de procesamiento.
+Aplicación web de gestión de reservas de salas de estudio desarrollada sobre Node.js y Express, refactorizada en una arquitectura modular por capas sin alterar el contrato funcional original.
 
-## Instalación
-Para preparar el entorno de ejecución, clonar el repositorio e instalar las dependencias declaradas en el archivo `package.json`:
+---
+
+## Proyecto de partida y cambios
+
+El punto de partida corresponde a la entrega funcional del **TP 05** (aplicación monolítica de reservas de salas de estudio con middlewares, vistas EJS y almacenamiento en memoria).
+
+### Cambios realizados:
+* **Separación de responsabilidades:** Se desacoplaron las capas del sistema dividiendo el código en arranque (`index.js`), configuración del entorno (`configuracion.js`), inicialización de la app y pipeline (`app.js`), ruteo (`rutas/reservas.js`), controladores (`controladores/reservas.js`), lógica de negocio (`servicios/reservas.js`) y middlewares (`middleware/solicitudes.js` y `middleware/reservas.js`).
+* **Configuración desacoplada y externa:** Implementación de lectura, tipado y validación estricta de variables de entorno (`PORT` y `NODE_ENV`).
+* **Inyección de dependencias:** El servicio de reservas gestiona la colección de datos y se inyecta como dependencia en los controladores, garantizando una única fuente de la verdad para todas las operaciones (incluida la ruta `/estado`).
+* **Alineación de calidad:** Incorporación de ESLint y Prettier con scripts de verificación y formateo estático automatizado.
+
+---
+
+## Instalación y ejecución
+
+### Requisitos previos
+* Node.js (v20 o superior recomendado)
+* npm
+
+### Pasos de instalación y puesta en marcha
+1. Clonar el repositorio y ubicarse en la raíz del proyecto:
 
 ```bash
    git clone <URL_DEL_REPOSITORIO>
-   cd tp-05-salas-middleware
+   cd tp-06-salas-modular
+```
+
+2. Instalar las dependencias del proyecto:
+```bash
    npm install
 ```
 
-## Ejecución
-Antes de iniciar la aplicación, se puede comprobar la sintaxis del código sin ejecutarlo:
-
+3. Ejecutar la aplicación en modo estándar (utiliza valores predeterminados PORT=3000 y NODE_ENV=development sin requerir archivo .env):
 ```bash
-   npm run check
-```
-Para levantar el servidor en el entorno local:   
-```Bash
    npm start
 ```
-La consola confirmará el inicio y el servicio quedará escuchando en http://localhost:3000.
 
-## Rutas
-El sistema implementa el siguiente contrato de endpoints:   
-1. GET /: Página inicial que describe el propósito de la plataforma y provee navegación hacia el listado de reservas y al formulario de alta.   
-2. GET /estado: Devuelve un objeto JSON con el estado del servicio, el total de reservas en memoria y el identificador asignado a la solicitud.   
-3. GET /reservas: Muestra todas las reservas existentes o un mensaje alternativo si no hay registros cargados.   
-4. GET /reservas/nueva: Presenta el formulario accesible para ingresar una nueva solicitud. Declarado obligatoriamente antes de GET /reservas/:id para evitar colisiones de rutas.   
-5. GET /reservas/:id: Muestra el detalle completo de la reserva buscada por su identificador numérico o responde con un error 404 en HTML si no existe.   
-6. POST /reservas: Procesa el envío del formulario mediante una cadena de dos handlers (validarReserva y crearReserva). 
+4. Ejecutar la aplicación leyendo un archivo .env local: este comando ejecuta node --env-file=.env src/index.js, por lo que requiere la existencia previa del archivo .env en la raíz.
+
+```bash
+   npm run start:local
+```   
+
+## Configuración del entorno
+La aplicación lee las siguientes variables de entorno procesadas por src/configuracion.js:
 
 
-## Pipeline de middleware
-El pipeline global procesa cada solicitud entrante en un orden secuencial estricto:   
-1. morgan("dev") (Terceros): Registra en la terminal el método, la URL y el resultado preliminar de cada petición.   
-2. identificarSolicitud (Personalizado global): Genera un código correlativo BIB-XXXX y lo almacena en res.locals.solicitudId para disponibilizarlo en todas las vistas y en la respuesta de /estado.   
-3. medirDuracion (Personalizado global): Captura la marca de tiempo inicial con process.hrtime.bigint() y asocia un listener al evento finish del objeto res para calcular y registrar la duración total en milisegundos una vez enviada la respuesta.   
-4. expressLayouts (Terceros): Intercepta el renderizado de vistas para insertar el contenido dentro de views/layouts/main.ejs.   
-5. express.static (Incorporado): Resuelve y sirve los recursos estáticos desde la carpeta public.   
-6. express.urlencoded({ extended: false }) (Incorporado): Analiza las solicitudes con cabecera application/x-www-form-urlencoded y puebla el objeto req.body.   
-7. express.json() (Incorporado): Parsea cuerpos de solicitudes con formato JSON.   
-8. Rutas directas (GET /, GET /estado): Handlers de nivel de aplicación.   
-9. reservasRouter montado en /reservas: Router que define el área de trabajo y procesa las rutas relativas (/, /nueva, /:id, POST /).   
-10. Handler 404 final: Middleware terminal que atrapa cualquier solicitud no resuelta por las capas anteriores, respondiendo con código 404 y renderizando no-encontrado.ejs sin invocar next().   
+| Variable | Tipo | Valor por defecto | Descripción |
+| :--- | :--- | :--- | :--- |
+| `PORT` | Entero (1 - 65535) | `3000` | Puerto en el que escucha el servidor HTTP. Valores no enteros o fuera de rango interrumpen el arranque arrojando un error explícito. |
+| `NODE_ENV` | String | `development` | Define el entorno de ejecución. Si su valor es `production`, Morgan utiliza el formato de registro `combined`. Para cualquier otro valor, utiliza `dev`. |
 
-## Justificación del orden
-* morgan, identificarSolicitud y medirDuracion se ubican al inicio para auditar de forma homogénea cualquier petición, incluyendo las que fallen o soliciten recursos estáticos.   
-* expressLayouts debe preceder a las rutas para estar activo cuando se llame a res.render().   
-* express.urlencoded y express.json se sitúan obligatoriamente antes de las rutas y del router de reservas; de lo contrario, req.body llegaría como undefined al middleware de validación.   
-* El middleware de error 404 se registra al final de todo el archivo para capturar únicamente las peticiones que no hicieron coincidencia con ninguna ruta previa. 
+### Configuración del registro
+La variable NODE_ENV solo diferencia el formato del registro emitido por Morgan:
 
-## Diagrama del flujo POST válido
+* Desarrollo (dev): Formato conciso y coloreado por código de estado HTTP para agilizar la depuración en terminal.
 
-```
-POST /reservas
-  │
-  ▼
-morgan("dev")
-  │ next()
-  ▼
-identificarSolicitud
-  │ next()
-  ▼
-medirDuracion
-  │ next()
-  ▼
-expressLayouts
-  │ next()
-  ▼
-express.urlencoded
-  │ next()
-  ▼
-reservasRouter
-  │
-  ▼
-prepararAreaReservas
-  │ next()
-  ▼
-validarReserva (Pasa validaciones -> crea req.reservaValidada)
-  │ next()
-  ▼
-crearReserva (Agrega reserva al arreglo en memoria)
-  │
-  ▼
-302 Redirección hacia /reservas
-  │
-  ▼
-finish: ID + Método + URL + Código 302 + Duración en ms
+* Producción (combined): Formato estándar de log de acceso Apache con información detallada (IP remota, fecha, agente de usuario, referrer).
+
+El repositorio versiona una plantilla de configuración en .env.example con valores no sensibles:
+
+```bash
+PORT=3000
+NODE_ENV=development
 ```
 
-## Diagrama del flujo POST inválido
+## Mapa de módulos y dependencias
 
+### Estructura del proyecto
+
+```bash
+tp-06-salas-modular/
+├── datos/
+│   └── constantes.js
+├── public/
+│   └── css/
+│       └── estilos.css
+├── src/
+│   ├── controladores/
+│   │   └── reservas.js
+│   ├── middleware/
+│   │   ├── reservas.js
+│   │   └── solicitudes.js
+│   ├── rutas/
+│   │   └── reservas.js
+│   ├── servicios/
+│   │   └── reservas.js
+│   ├── app.js
+│   ├── configuracion.js
+│   └── index.js
+├── views/
+│   ├── layouts/
+│   │   └── main.ejs
+│   ├── reservas/
+│   │   ├── detalle.ejs
+│   │   ├── lista.ejs
+│   │   └── nueva.ejs
+│   ├── inicio.ejs
+│   └── no-encontrado.ejs
+├── .env.example
+├── .gitignore
+├── eslint.config.js
+├── package.json
+└── README.md
 ```
-POST /reservas
-  │
-  ▼
-morgan("dev")
-  │ next()
-  ▼
-identificarSolicitud
-  │ next()
-  ▼
-medirDuracion
-  │ next()
-  ▼
-expressLayouts
-  │ next()
-  ▼
-express.urlencoded
-  │ next()
-  ▼
-reservasRouter
-  │
-  ▼
-prepararAreaReservas
-  │ next()
-  ▼
-validarReserva (Falla comprobación -> status 400 + render de formulario)
-  │
-  └─► [FIN DEL CICLO: Termina en validarReserva sin llamar a next()]
-  │
-  ▼
-finish: ID + Método + URL + Código 400 + Duración en ms
-```
 
-## Alcance de cada función
+Justificaciones de diseño y límites arquitectónicos
 
-### Clasificación de middleware
-* Middleware incorporado: Funciones provistas internamente por Express. Se emplean express.static para servir archivos públicos y los parsers express.urlencoded y express.json para interpretar las cargas útiles de red y construir req.body.
-* Middleware de terceros: Librerías externas instaladas mediante el gestor de paquetes npm. Se utilizan morgan para la auditoría HTTP en consola y express-ejs-layouts para el ensamblado de plantillas maestras.   
-* Middleware personalizado: Funciones desarrolladas a medida para la lógica del sistema. Comprenden identificarSolicitud (generación de ID), medirDuracion (cálculo de tiempos), prepararAreaReservas (fijación de variables locales de sección) y validarReserva (control de integridad de datos).  
+* ¿Por qué el servicio no usa res ni EJS ni códigos HTTP? El servicio representa la lógica de negocio pura y la manipulación de datos en memoria. Al desacoplarlo del protocolo HTTP y de los objetos req y res, la lógica de datos se mantiene reutilizable, agnóstica de la interfaz (podría responder a una API REST, comandos CLI o tests unitarios) y libre de efectos colaterales de transporte.
 
-### Funcionamiento de next()
-En Express, la función next() le indica a la cadena de ejecución que el middleware actual finalizó su tarea de manera satisfactoria y que debe pasar el control al siguiente eslabón del pipeline. Si una función de middleware no invoca a next() y tampoco emite una respuesta al cliente (mediante res.render, res.json, res.redirect, etc.), la solicitud se suspende y el navegador permanece esperando de forma indefinida hasta agotar el tiempo de espera. Por otra parte, cuando un middleware emite una respuesta terminando el ciclo (como en el rechazo de validación con status 400), no debe llamar a next(), evitando errores de encabezados HTTP duplicados.
+* ¿Qué hace el controlador? El controlador actúa como puente entre la capa HTTP y la de negocio: extrae y castea parámetros de req, invoca los métodos correspondientes del servicio inyectado, selecciona la vista EJS a renderizar o emite la respuesta en JSON, y establece los códigos de estado HTTP (200, 302, 404).
 
-### Justificación de la posición de los parsers
-Las peticiones HTTP transportan la información en el cuerpo a través de un flujo de bytes (streams). Los parsers express.urlencoded() y express.json() se encargan de leer ese flujo, convertirlo en una estructura accesible e insertarlo en el objeto req.body. Si estos parsers se ubicaran después de las rutas o del router, cualquier función que intente evaluar req.body (como validarReserva) fallará al encontrar dicho objeto indefinido.
+* ¿Por qué el router declara caminos relativos? El enrutador (src/rutas/reservas.js) se monta en src/app.js bajo el prefijo base /reservas. Definir rutas relativas (/, /nueva, /:id) previene duplicaciones accidentales en los paths (como /reservas/reservas), facilita el mantenimiento y permite reubicar el módulo en otro prefijo sin modificar las rutas internas.
 
-### Alcances: global, de router y de ruta
-* Alcance global (app.use): Aplica de forma transversal e incondicional a todas las peticiones recibidas por el servidor (por ejemplo: identificarSolicitud y medirDuracion).   
-* Alcance de router (reservasRouter.use): Afecta únicamente a aquellas solicitudes que coincidan con la ruta de montaje asignada (/reservas). En este caso, prepararAreaReservas establece res.locals.seccion = "Reservas de salas" exclusivamente para las rutas de reservas, sin contaminar rutas externas como / o /estado.   
-* Alcance de ruta (reservasRouter.post("/", validarReserva, crearReserva)): Limita su ejecución a la coincidencia estricta del método HTTP y la ruta definida. validarReserva únicamente se ejecuta cuando llega un envío POST directo sobre /reservas.   
+* ¿Dónde vive el único arreglo de reservas y qué ocurrirá al reiniciar? El arreglo reside en la memoria volátil del proceso Node.js, encapsulado dentro de la clausura de la instancia única de crearServicioReservas inicializada en src/index.js. Al reiniciar el servidor (por detención manual, caída o reinicio del proceso), el estado en memoria se destruye y el servicio vuelve a inicializarse con la lista semilla original de 4 reservas.
 
-### Justificación del evento finish
-La medición precisa del ciclo de vida se realiza adjuntando un listener al evento finish de res porque Express delega la ejecución de forma asíncrona mediante next(). Calcular el tiempo transcurrido inmediatamente después de invocar next() arrojaría solo el tiempo que tardó en llamarse la siguiente función, omitiendo el renderizado, el acceso a datos y la transmisión física de la respuesta por la red. El evento finish lo dispara el núcleo de Node.js en el instante exacto en que los encabezados y el cuerpo han terminado de transmitirse al cliente
+## Pipeline y contrato de rutas
 
-### Montaje del router y rutas relativas
-Al montar el router con app.use("/reservas", reservasRouter), Express asocia el prefijo /reservas a todas las rutas declaradas en su interior. Por lo tanto, los métodos internos deben configurarse mediante rutas relativas (/, /nueva y /:id). Incluir la palabra /reservas dentro del router causaría duplicación estructural (generando URLs erróneas como /reservas/reservas/nueva).
+### Orden del Pipeline de Middlewares
+Cada solicitud entrante atraviesa estrictamente la siguiente secuencia en src/app.js:
 
-### Patrón Post/Redirect/Get (PRG)
-Tras completar con éxito la inserción de una reserva en crearReserva, el servidor responde enviando un código de estado 302 con la cabecera Location: /reservas. Esta redirección instruye al navegador a emitir una petición GET nueva e independiente hacia /reservas. Este patrón arquitectónico previene que, si el usuario recarga la página o utiliza los botones de navegación del historial, el navegador reenvíe accidentalmente la solicitud POST, evitando duplicaciones innecesarias de registros.
+1. morgan(formatoRegistro): Registro HTTP según el entorno configurado.
 
-## Validación
-El middleware validarReserva aplica controles en el servidor para asegurar la consistencia de los datos recibidos:   
-1. Normalización de cadenas de texto mediante .trim().   
-2. Verificación de presencia en todos los campos obligatorios (estudiante, email, sala, fecha, turno).   
-3. Validación de correo electrónico conteniendo el carácter @.   
-4. Pertenencia de la sala al conjunto estricto de opciones permitidas ("Sala Norte", "Sala Sur", "Sala Multimedia").   
-5. Pertenencia del turno al catálogo válido ("Mañana", "Tarde", "Noche").   
-6. Conversión del campo personas a número entero y verificación de rango restrictivo entre 1 y 6.   
+2. crearSolicitudes(): Genera e inyecta en res.locals.solicitudId el identificador correlativo con prefijo BIB-XXXX.
 
-Ante cualquier inconsistencia, el middleware responde con código 400, retiene los datos ingresados dentro del objeto valores para conservarlos en el formulario y renderiza la vista reservas/nueva mostrando un mensaje de error visible con el atributo accesible role="alert". Si la información es válida, construye req.reservaValidada y llama a next() para dar paso al guardado en crearReserva
+3. medirDuracion: Inicia el temporizador de alta resolución (process.hrtime.bigint()) y registra en consola la duración de la petición al dispararse el evento finish.
 
-## Pruebas manuales
+4. expressLayouts: Habilita el motor de plantillas con layout centralizado (layouts/main.ejs).
 
-A continuación se detalla la matriz de verificación realizada sobre los casos solicitados para comprobar el correcto funcionamiento del pipeline, códigos de estado HTTP y respuestas visuales o en consola:
+5. express.static: Sirve archivos estáticos desde el directorio /public (incluyendo /css/estilos.css).
 
-| Caso | Método / URL / Acción | Estado esperado | Evidencia observable / Salida esperada |
+6. express.urlencoded({ extended: false }): Parsea cuerpos de formularios HTML.
+
+7. express.json(): Parsea cuerpos con formato JSON.
+
+8. Rutas de aplicación:
+
+   * GET /: Vista de inicio.
+
+   * GET /estado: JSON con diagnóstico y cantidad actual de reservas.
+
+9. Enrutador modular app.use("/reservas", reservasRouter):
+
+   * Aplica prepararAreaReservas (fija res.locals.seccion).
+   * GET /reservas: Listado de reservas.
+   * GET /reservas/nueva: Formulario de alta (declarado antes de /:id para evitar capturas accidentales).
+   * GET /reservas/:id: Detalle de reserva o 404 si el ID no existe.
+   * POST /reservas: Validación de datos con validarReserva -> Redirección 302 si es válido; respuesta 400 si es inválido.
+
+10. Middleware terminal 404: Renderiza views/no-encontrado.ejs con código 404 para cualquier ruta no mapeada.
+
+### Contrato de rutas
+
+| Método | Ruta | Estado HTTP | Respuesta / Vista |
 | :--- | :--- | :---: | :--- |
-| **Inicio** | `GET /` | `200` | Carga de portada con enlaces a listado y formulario, con el identificador `solicitudId` visible en el pie de página. |
-| **Estado** | `GET /estado` | `200` | Respuesta JSON con formato: `{"servicio":"activo","reservas":4,"solicitudId":"BIB-XXXX"}`. |
-| **Listado** | `GET /reservas` | `200` | Muestra las 4 tarjetas de reservas iniciales con sus datos correspondientes. |
-| **Estado vacío** | `GET /reservas` (con arreglo vacío) | `200` | Mensaje alternativo amigable avisando que no hay reservas registradas en el momento. |
-| **Formulario** | `GET /reservas/nueva` | `200` | Renderizado de formulario con campos asociados mediante etiquetas `<label>` y opciones de select. |
-| **Detalle válido** | `GET /reservas/1` | `200` | Vista de detalle completa con estudiante, email, sala, fecha, turno y cantidad de personas. |
-| **Detalle inexistente** | `GET /reservas/999` | `404` | Página HTML (`no-encontrado.ejs`) indicando que la reserva con ese identificador no existe. |
-| **Campos vacíos** | `POST /reservas` (campos en blanco) | `400` | Rechazo con código 400, renderiza el formulario con alerta `role="alert"` y preserva valores cargados. |
-| **Sala no permitida** | `POST /reservas` (`sala: "Sala Inexistente"`) | `400` | Rechazo con código 400 por no pertenecer a las permitidas; no se agrega registro a la memoria. |
-| **Turno no permitido** | `POST /reservas` (`turno: "Madrugada"`) | `400` | Rechazo con código 400 por turno no admitido; no se agrega registro a la memoria. |
-| **Email sin @** | `POST /reservas` (`email: "usuario.dominio.com"`) | `400` | Rechazo con código 400 por no superar la validación básica de formato con `@`. |
-| **Personas igual a 0** | `POST /reservas` (`personas: 0`) | `400` | Rechazo con código 400 por estar fuera del rango permitido (1 a 6). |
-| **Personas igual a 7** | `POST /reservas` (`personas: 7`) | `400` | Rechazo con código 400 por exceder la capacidad máxima de 6 personas. |
-| **Reserva válida** | `POST /reservas` (datos correctos) | `302` y luego `200` | Redirección 302 hacia `/reservas`, nuevo GET 200 y aparición de la tarjeta creada en la lista. |
-| **URL inexistente** | `GET /ruta-desconocida` | `404` | Atrapada por el middleware final del pipeline renderizando la pantalla de error 404. |
-| **Reinicio** | Reiniciar servidor (`Ctrl + C` y `npm start`) | `200` | Al consultar `/reservas` se constata el retorno a las 4 reservas iniciales al limpiarse la RAM. |
+| `GET` | `/` | 200 | Renderiza `views/inicio.ejs` |
+| `GET` | `/estado` | 200 | JSON con diagnóstico: servicio, cantidad (`contar`), `solicitudId` (`BIB-`) y lista |
+| `GET` | `/reservas` | 200 | Renderiza `views/reservas/lista.ejs` con el arreglo de reservas |
+| `GET` | `/reservas/nueva` | 200 | Renderiza `views/reservas/nueva.ejs` con salas y turnos permitidos |
+| `GET` | `/reservas/:id` | 200 / 404 | `200`: `views/reservas/detalle.ejs` \| `404`: `views/no-encontrado.ejs` |
+| `POST` | `/reservas` | 302 / 400 | Válido: `302` redirect a `/reservas` \| Inválido: `400` renderiza `views/reservas/nueva` |
+| `GET` | `/css/estilos.css` | 200 | Archivo CSS servido por `express.static` desde `public/` |
+| `*` | `/url-inexistente` | 404 | Middleware final 404: renderiza `views/no-encontrado.ejs` |
 
-> **Nota de verificación en consola:** Durante cada una de estas pruebas, se verifico en la terminal que tanto la salida de `morgan("dev")` como  la línea personalizada de `medirDuracion` (`[BIB-XXXX] METODO RUTA STATUS TIEMPO ms`) se imprimieron en tiempo real con los códigos de respuesta correctos (200, 302, 400 y 404).
+---
 
-## Persistencia temporal
-El almacenamiento de las reservas se gestiona enteramente en un arreglo residente en la memoria RAM del proceso de Node.js. Por diseño del trabajo práctico, no se interactúa con bases de datos ni con archivos en el disco para guardar las altas. En consecuencia, cualquier nueva reserva creada durante la ejecución existe únicamente mientras el proceso continúe activo; al detener o reiniciar el servidor, la memoria es liberada por el sistema operativo y el sistema vuelve a iniciar con las cuatro reservas predeterminadas de src/index.js
+### Matriz antes / después
+
+| Caso de prueba | Estado esperado | Evidencia TP 05 (Línea de base) | Evidencia TP 06 (Modular) |
+| :--- | :---: | :--- | :--- |
+| **Inicio y CSS** | 200 | Carga bienvenida y `/css/estilos.css` (200). | Carga vista y estilos con ID correlativo `BIB-` visible. |
+| **Estado inicial** | 200 | JSON con 4 reservas iniciales. | JSON con `reservas: 4` e ID `BIB-0002`. |
+| **Listado y detalle existente** | 200 | Lista con 4 elementos; `/reservas/1` abre datos de Ana García. | Mismos datos del TP 05; detalle funcional. |
+| **Detalle inexistente** | 404 | `/reservas/999` devuelve 404 HTML sin caída del servidor. | `/reservas/999` renderiza `no-encontrado.ejs` (404). |
+| **Formulario de alta** | 200 | Formulario con selectores de sala y turno. | Carga idéntica con opciones pobladas desde constantes. |
+| **POST vacío / sin campos oblig.** | 400 | 400 con mensaje de campos obligatorios. | 400 sin llamar a `next()`; no altera el arreglo. |
+| **POST email inválido (sin @)** | 400 | 400 por falta de caracter `@` en correo. | 400 conserva valores previos; no genera alta. |
+| **POST sala / turno no permitido** | 400 | 400 rechaza valor ajeno a la lista permitida. | 400 rechaza valor; renderiza con mensaje de error. |
+| **POST personas inválidas (0, 7)** | 400 | 400 personas debe ser entero entre 1 y 6. | 400 personas fuera de rango; sin alta. |
+| **POST válido** | 302 -> 200 | 302 a `/reservas`; `/estado` sube a 5. | Redirección 302; `/estado` sincronizado en 5. |
+| **URL inexistente** | 404 | `/inexistente` responde 404 HTML. | 404 capturado en middleware final `no-encontrado`. |
+| **Reinicio de servidor** | 200 | Vuelve a las 4 reservas iniciales. | Arreglo en memoria se resetea a 4 semillas. |
+| **Puerto alternativo (`PORT=4000`)** | 200 | N/A (puerto hardcodeado en 3000). | Servidor levanta y responde en el nuevo puerto configurado. |
+| **Puerto inválido (`PORT=99999`)** | No inicia | N/A (sin validación de entorno). | Error explícito: `PORT debe ser un entero entre 1 y 65535`. |
+
+
+## Formato y análisis estático
+
+### Scripts disponibles
+
+* Formateo de código:
+```bash
+   npm run format
+```
+* Verificación de formateo:
+```bash
+   npm run format:check
+```
+
+* Análisis estático:
+```bash
+   npm run lint
+```
+
+* Verificación integral:
+```bash
+   npm run check
+``` 
+
+### Resultados de la verificacion estatica
+
+```bash
+$ npm run check
+
+> tp-06-salas-modular@1.0.0 check
+> npm run format:check && npm run lint
+
+> tp-06-salas-modular@1.0.0 format:check
+> prettier --check src
+
+Checking formatting...
+All matched files are use prettier code style!
+
+> tp-06-salas-modular@1.0.0 lint
+> eslint src
+```
+
+## Persistencia temporal y límites
+* Persistencia en memoria: La aplicación almacena los datos de las reservas exclusivamente en una colección en memoria RAM (Array). No se implementa persistencia en base de datos ni en el sistema de archivos (fs), cumpliendo con el alcance del trabajo práctico.
+
+* Ciclo de vida del estado: Las altas registradas a través de solicitudes POST persisten únicamente durante el tiempo de ejecución del proceso. Si el servidor se detiene, se reinicia o sufre un fallo, el estado volátil se descarta y el servicio se reinicia con las cuatro reservas de prueba iniciales.
+
+
+

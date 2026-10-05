@@ -1,4 +1,3 @@
-const PORT = 3000;
 
 const { crearServicioReservas } = require("./servicios/reservas");
 
@@ -53,7 +52,7 @@ function main() {
 
   const app = crearApp({ serviciosReservas, formatoRegistro });
 
-  app.listen(PORT, () => {
+  app.listen(puerto, () => {
     console.log(`Aplicación disponible en http://localhost:${puerto}`);
   });
 }
